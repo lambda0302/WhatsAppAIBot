@@ -56,7 +56,14 @@ class WhatsAppBot {
 
     // 登录成功
     this.client.on('ready', () => {
-      console.log('✅ 机器人已就绪，登录用户:', this.client.info.wid._user);
+      try {
+        const info = this.client.info;
+        const userName = info?.pushname || info?.wid?.user || '未知用户';
+        console.log(`✅ 机器人已就绪，登录用户: ${userName}`);
+      } catch (err) {
+        console.warn('⚠️ 获取用户信息失败:', err.message);
+        console.log(`✅ 机器人已就绪，登录用户: undefined (可忽略)`);
+      }
     });
 
     // 收到消息
@@ -82,7 +89,7 @@ class WhatsAppBot {
 
   async handleMessage(message) {
     // 忽略自己发送的消息
-    // if (message.fromMe) return;
+     if (message.fromMe) return;
 
     // 忽略状态消息
     if (message.type === 'revoked_caption' || message.type === 'e2e_notification') return;
@@ -134,7 +141,7 @@ class WhatsAppBot {
       // 加入延迟
         await this.simulateTypingDelay();
 
-        
+
       // 调用千问生成回复
       const reply = await this.qwenService.chat(
         `${userName} 在群里问道：${userMessage}`,
@@ -173,6 +180,7 @@ class WhatsAppBot {
   async start() {
     console.log('🤖 正在启动 WhatsApp 机器人...');
     await this.client.initialize();
+    console.log('初始化完成！');
   }
 
   async stop() {
