@@ -39,9 +39,9 @@ class WhatsAppBot {
     return Math.floor(Math.random() * (max - min + 1)) + min;
   }
 
-  // 模拟人类打字延时 (1.5 秒 到 4 秒 之间)
+  // 模拟人类打字延时 ( 1.5 秒 到 4 秒 之间)
   async simulateTypingDelay() {
-    const delay = this.getRandomInt(5000, 8000); 
+    const delay = this.getRandomInt(1500, 4000); 
     console.log(`⏳ 模拟打字延迟 ${delay}ms...`);
     await new Promise(resolve => setTimeout(resolve, delay));
   }
@@ -64,12 +64,35 @@ class WhatsAppBot {
         console.warn('⚠️ 获取用户信息失败:', err.message);
         console.log(`✅ 机器人已就绪，登录用户: undefined (可忽略)`);
       }
+      try {
+        // 获取机器人自己的完整 ID (包含正确的国家代码和后缀)
+        const myId = this.client.info.wid._serialized; 
+        console.log(`✅ 机器人已就绪，我的 ID 是: ${myId}`);
+
+        // 延迟一段时间，等待网页端完全加载聊天列表
+        setTimeout(async () => {
+            console.log('📤 正在发送自测消息...');
+            // 使用系统识别出的本人 ID 发送，成功率最高
+            await this.client.sendMessage(myId, '这是发给自己的测试消息'); 
+        }, 10000);
+
+      } catch (err) {
+        console.error('❌ Ready 处理出错:', err);
+      }
+    });
+
+
+    // 监听发送消息事件
+    this.client.on('message_create', async (message) => {
+      console.log('pong');
     });
 
     // 收到消息
     this.client.on('message', async (message) => {
+      console.log('pong');
       await this.handleMessage(message);
     });
+
 
     // 群组成员变动（欢迎新人）
     this.client.on('group_join', async (notification) => {
@@ -88,6 +111,7 @@ class WhatsAppBot {
   }
 
   async handleMessage(message) {
+    console.log('接收到消息');
     // 忽略自己发送的消息
      if (message.fromMe) return;
 
