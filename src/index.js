@@ -55,7 +55,7 @@ class WhatsAppBot {
     });
 
     // 登录成功
-    this.client.on('ready', () => {
+    this.client.on('ready', async () => {
       try {
         const info = this.client.info;
         const userName = info?.pushname || info?.wid?.user || '未知用户';
@@ -79,6 +79,30 @@ class WhatsAppBot {
       } catch (err) {
         console.error('❌ Ready 处理出错:', err);
       }
+
+      try {
+        // 延迟一段时间，等待网页端完全加载聊天列表
+        setTimeout(async () => {
+            console.log('📤 正在发送群聊消息...');
+            // 向目标群聊发送消息
+            await this.client.sendMessage('120363426903133312@g.us', '我是chatBot，登陆成功'); 
+        }, 10000);
+
+      } catch (err) {
+        console.error('❌ Ready 处理出错:', err);
+      }
+
+    //   try {
+    //     const chats = await this.client.getChats();
+    //     const groups = chats.filter(chat => chat.isGroup);
+        
+    //     console.log('--- 你的群聊列表 ---');
+    //     groups.forEach(group => {
+    //       console.log(`群名: ${group.name} | ID: ${group.id._serialized}`);
+    //     });
+    //   } catch (err) {
+    //     console.error('❌ Ready 处理出错:', err);
+    //   }
     });
 
 
