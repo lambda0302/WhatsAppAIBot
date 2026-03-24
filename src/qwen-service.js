@@ -13,7 +13,7 @@ class QwenService {
    * @param {string} systemPrompt - 系统提示词
    * @returns {Promise<string>} - AI 回复
    */
-  async chat(prompt, systemPrompt = '你是一个友好的社群助手') {
+  async chat(prompt, systemPrompt = '你是一个友好的WhatsApp社群助手') {
     try {
       const response = await axios.post(
         `${this.apiUrl}/chat/completions`,

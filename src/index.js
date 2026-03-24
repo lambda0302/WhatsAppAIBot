@@ -1,5 +1,6 @@
-const { Client } = require('whatsapp-web.js');
+const { Client, LocalAuth} = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
+const { COMPANY_INFO } = require('./constants'); // 引入常量
 require('dotenv').config();
 
 const QwenService = require('./qwen-service');
@@ -7,6 +8,9 @@ const QwenService = require('./qwen-service');
 class WhatsAppBot {
   constructor() {
     this.client = new Client({
+      authStrategy: new LocalAuth({
+        clientId: "qwen-bot" // 建议指定 ID，防止多实例冲突
+      }),
       puppeteer: {
         headless: true,
         args: [
@@ -53,6 +57,10 @@ class WhatsAppBot {
       console.log('请使用 WhatsApp 扫描二维码登录:');
       qrcode.generate(qr, { small: true });
     });
+    // 观察扫码之后是否有认证信息
+    this.client.on('authenticated', () => {
+      console.log('📡 认证成功！正在同步数据...');
+    });
 
     // 登录成功
     this.client.on('ready', async () => {
@@ -73,7 +81,10 @@ class WhatsAppBot {
         setTimeout(async () => {
             console.log('📤 正在发送自测消息...');
             // 使用系统识别出的本人 ID 发送，成功率最高
-            await this.client.sendMessage(myId, '这是发给自己的测试消息'); 
+            const info = this.client.info;
+            const userName = info?.pushname || info?.wid?.user || '未知用户';
+            const aiGreeting = await this.qwenService.generateGreeting(userName);
+            await this.client.sendMessage(myId, aiGreeting); 
         }, 10000);
 
       } catch (err) {
@@ -208,18 +219,25 @@ class WhatsAppBot {
 
     try {
       const chat = await notification.getChat();
-      const contact = await notification.getAuthor();
+      const contact = await notification.getContact();
       const userName = contact.pushname || '新成员';
 
       console.log(`新成员加入群聊：${userName}, 群：${chat.name}`);
 
       // 发送欢迎消息
-      const welcomeMessage = this.greetingMessage.replace('{name}', userName);
-      await chat.sendMessage(welcomeMessage);
+      // const welcomeMessage = this.greetingMessage.replace('{name}', userName);
+      // await chat.sendMessage(welcomeMessage);
 
       // 也可以用 AI 生成个性化欢迎语
-      // const aiGreeting = await this.qwenService.generateGreeting(userName);
-      // await chat.sendMessage(aiGreeting);
+      const aiGreeting = await this.qwenService.generateGreeting(userName);
+      await chat.sendMessage(aiGreeting);
+      
+      
+      setTimeout(async () => {
+            await chat.sendMessage(COMPANY_INFO);
+        }, 1500);
+
+
     } catch (error) {
       console.error('处理新人入群失败:', error.message);
     }
