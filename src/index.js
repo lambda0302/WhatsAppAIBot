@@ -1,6 +1,7 @@
 const { Client, LocalAuth} = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
-const { COMPANY_INFO } = require('./constants'); // 引入常量
+const { COMPANY_INFO, GROUP_RULES } = require('./constants'); // 引入常量
+const {BroadcastService} = require('./services/broadcast-service.js')
 require('dotenv').config();
 
 const QwenService = require('./qwen-service');
@@ -32,10 +33,27 @@ class WhatsAppBot {
     this.botName = process.env.BOT_NAME || '社群助手';
     this.enableGreeting = process.env.ENABLE_GREETING !== 'false';
     this.greetingMessage = process.env.GREETING_MESSAGE || '欢迎加入社群！';
-
+    this.broadcastService = null;
     this.setupEventListeners();
   }
 
+  // 提供一个方法接收外部注入的实例
+  setBroadcastService(service) {
+    this.broadcastService = service;
+  }
+
+
+
+  // 新增：获取所有群组的公共方法，供 BroadcastService 调用
+  async getAllGroups() {
+    try {
+      const chats = await this.client.getChats();
+      return chats.filter(chat => chat.isGroup);
+    } catch (error) {
+      console.error('获取群组列表失败:', error);
+      return [];
+    }
+  }
 
   // 加入随机延迟
   // 生成随机整数 (min 到 max 之间，单位毫秒)
@@ -75,7 +93,7 @@ class WhatsAppBot {
       try {
         // 获取机器人自己的完整 ID (包含正确的国家代码和后缀)
         const myId = this.client.info.wid._serialized; 
-        console.log(`✅ 机器人已就绪，我的 ID 是: ${myId}`);
+        // console.log(`✅ 机器人已就绪，我的 ID 是: ${myId}`);
 
         // 延迟一段时间，等待网页端完全加载聊天列表
         setTimeout(async () => {
@@ -103,23 +121,12 @@ class WhatsAppBot {
         console.error('❌ Ready 处理出错:', err);
       }
 
-    //   try {
-    //     const chats = await this.client.getChats();
-    //     const groups = chats.filter(chat => chat.isGroup);
-        
-    //     console.log('--- 你的群聊列表 ---');
-    //     groups.forEach(group => {
-    //       console.log(`群名: ${group.name} | ID: ${group.id._serialized}`);
-    //     });
-    //   } catch (err) {
-    //     console.error('❌ Ready 处理出错:', err);
-    //   }
     });
 
 
     // 监听发送消息事件
     this.client.on('message_create', async (message) => {
-      console.log('pong');
+      console.log('message_create');
     });
 
     // 收到消息
@@ -172,9 +179,35 @@ class WhatsAppBot {
 
   async handlePrivateMessage(message, contact) {
     try {
-      // 简单的打招呼逻辑
-      const text = message.body.toLowerCase();
+      const text = message.body.trim().toLowerCase();
+      const isAdmin = contact.number === '管理员手机号'; // 替换为你的 WhatsApp 绑定的号码（不带@s.whatsapp.net）
 
+      // 管理员指令处理
+      if (isAdmin && text.startsWith('!')) {
+        if (text.startsWith('!设置新品 ')) {
+          const content = text.replace('!设置新品 ', '').trim();
+          this.broadcastService.saveConfig('newProduct', content);
+          await message.reply(`✅ 新品文案已更新并保存：\n\n${content}`);
+          return;
+        }
+
+        if (text.startsWith('!设置活动 ')) {
+          const content = text.replace('!设置活动 ', '').trim();
+          this.broadcastService.saveConfig('weeklyActivity', content);
+          await message.reply(`✅ 活动文案已更新并保存：\n\n${content}`);
+          return;
+        }
+
+        if (text === '!查看当前内容') {
+          const conf = this.broadcastService.config;
+          await message.reply(`当前推送配置：\n\n[新品]: ${conf.newProduct}\n\n[活动]: ${conf.weeklyActivity}`);
+          return;
+        }
+      }
+
+
+
+      // 简单的打招呼逻辑
       if (text.includes('你好') || text.includes('hello') || text.includes('hi') || text.includes('嗨')) {
         const userName = contact.pushname || contact.number || '朋友';
         
@@ -198,7 +231,7 @@ class WhatsAppBot {
 
 
       // 加入延迟
-        await this.simulateTypingDelay();
+      await this.simulateTypingDelay();
 
 
       // 调用千问生成回复
@@ -219,24 +252,32 @@ class WhatsAppBot {
 
     try {
       const chat = await notification.getChat();
-      const contact = await notification.getContact();
-      const userName = contact.pushname || '新成员';
 
-      console.log(`新成员加入群聊：${userName}, 群：${chat.name}`);
+      // notification.recipientIds 是一个包含 ID 字符串的数组
+      const newUserIds = notification.recipientIds;
 
-      // 发送欢迎消息
-      // const welcomeMessage = this.greetingMessage.replace('{name}', userName);
-      // await chat.sendMessage(welcomeMessage);
+      // 使用 Promise.all 并行获取所有 Contact 对象
+      const newContacts = await Promise.all(
+          newUserIds.map(id => this.client.getContactById(id))
+      );
+      // 1. 提取所有新成员的名字（优先使用 pushname，没有则用 name，最后兜底用 '新成员'）
+      const userNames = newContacts.map(contact => contact.pushname || contact.name || '新成员');
 
-      // 也可以用 AI 生成个性化欢迎语
-      const aiGreeting = await this.qwenService.generateGreeting(userName);
+      // 2. 将名字数组连接成字符串，用中文顿号“、”分隔
+      const namesString = userNames.join('、');
+
+      // AI 生成个性化欢迎语
+      const aiGreeting = await this.qwenService.generateGreeting(namesString);
       await chat.sendMessage(aiGreeting);
       
-      
+      //发布公司信息，清晰说明我们是谁
       setTimeout(async () => {
             await chat.sendMessage(COMPANY_INFO);
         }, 1500);
-
+      //发布群规
+      setTimeout(async () => {
+        await chat.sendMessage(GROUP_RULES);
+      }, 1500);
 
     } catch (error) {
       console.error('处理新人入群失败:', error.message);

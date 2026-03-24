@@ -49,11 +49,11 @@ class QwenService {
 
   /**
    * 生成打招呼回复
-   * @param {string} userName - 用户名称
+   * @param {string} nameString - 用户名称
    * @returns {Promise<string>}
    */
-  async generateGreeting(userName) {
-    const prompt = `请为社群新成员 ${userName} 生成一句简短友好的欢迎语，50 字以内`;
+  async generateGreeting(nameString) {
+    const prompt = `请为社群新成员 ${nameString} 生成一句简短友好的欢迎语，50 字以内`;
     return await this.chat(prompt, '你是一个热情的社群管理员，擅长欢迎新成员');
   }
 }
