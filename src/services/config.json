@@ -1,4 +1,14 @@
 {
-  "newProduct": "🌟 新品推荐占位符",
-  "weeklyActivity": "🎁 周五活动占位符"
+  "tags": {
+    "electronics": {
+      "desc": "电子数码类",
+      "content": "默认电子产品文案",
+      "groups": []
+    },
+    "textile": {
+      "desc": "纺织面料类",
+      "content": "默认纺织类文案",
+      "groups": []
+    }
+  }
 }

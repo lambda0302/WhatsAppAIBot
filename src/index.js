@@ -1,7 +1,7 @@
 const { Client, LocalAuth} = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const { COMPANY_INFO, GROUP_RULES } = require('./constants'); // 引入常量
-const {BroadcastService} = require('./services/broadcast-service.js')
+// const {BroadcastService} = require('./services/broadcast-service.js')
 require('dotenv').config();
 
 const QwenService = require('./qwen-service');
@@ -22,7 +22,7 @@ class WhatsAppBot {
           '--no-first-run',
           '--no-zygote',
           '--disable-gpu',
-          '--proxy-server=http://192.168.28.12:8118'
+          '--proxy-server='
         ]
       },
       // 自定义 WhatsApp 网页地址，备用域名
@@ -41,8 +41,6 @@ class WhatsAppBot {
   setBroadcastService(service) {
     this.broadcastService = service;
   }
-
-
 
   // 新增：获取所有群组的公共方法，供 BroadcastService 调用
   async getAllGroups() {
@@ -92,8 +90,7 @@ class WhatsAppBot {
       }
       try {
         // 获取机器人自己的完整 ID (包含正确的国家代码和后缀)
-        const myId = this.client.info.wid._serialized; 
-        // console.log(`✅ 机器人已就绪，我的 ID 是: ${myId}`);
+        const myId = this.client.info.wid._serialized;
 
         // 延迟一段时间，等待网页端完全加载聊天列表
         setTimeout(async () => {
@@ -114,7 +111,7 @@ class WhatsAppBot {
         setTimeout(async () => {
             console.log('📤 正在发送群聊消息...');
             // 向目标群聊发送消息
-            await this.client.sendMessage('120363426903133312@g.us', '我是chatBot，登陆成功'); 
+            await this.client.sendMessage('', '我是chatBot，登陆成功');
         }, 10000);
 
       } catch (err) {
@@ -123,10 +120,15 @@ class WhatsAppBot {
 
     });
 
-
     // 监听发送消息事件
     this.client.on('message_create', async (message) => {
       console.log('message_create');
+      //监听发送的指令信息
+      const contact = await message.getContact();
+      const chat = await message.getChat();
+      if (contact.number === '86管理员电话号码' && message.body.startsWith('!')) {
+        await this.handleAdminCommands(message, chat, contact);
+      }
     });
 
     // 收到消息
@@ -155,7 +157,7 @@ class WhatsAppBot {
   async handleMessage(message) {
     console.log('接收到消息');
     // 忽略自己发送的消息
-     if (message.fromMe) return;
+    //  if (message.fromMe) return;
 
     // 忽略状态消息
     if (message.type === 'revoked_caption' || message.type === 'e2e_notification') return;
@@ -163,8 +165,12 @@ class WhatsAppBot {
     const contact = await message.getContact();
     const chat = await message.getChat();
 
-    console.log(`收到消息 - 来自：${contact.pushname || contact.number}，聊天：${chat.id._server}`);
-
+    console.log(`收到消息 - 来自：${contact.pushname || contact.number}，聊天：${chat.id.server}`);
+    //消息为来自管理员的指令信息
+    if (contact.number === '86管理员电话号' && message.body.startsWith('!')) {
+      await this.handleAdminCommands(message, chat, contact);
+      return;
+    }
     // 私聊消息处理
     if (chat.isGroup === false) {
       await this.handlePrivateMessage(message, contact);
@@ -172,7 +178,7 @@ class WhatsAppBot {
     }
 
     // 群聊消息处理 - 只有被@时才回复
-    if (message.mentionedIds && message.mentionedIds.some(id => id.includes(this.client.info.wid._user))) {
+    if (message.mentionedIds && message.mentionedIds.some(id => id.includes(this.client.info.wid.user))) {
       await this.handleGroupMention(message, contact, chat);
     }
   }
@@ -180,7 +186,7 @@ class WhatsAppBot {
   async handlePrivateMessage(message, contact) {
     try {
       const text = message.body.trim().toLowerCase();
-      const isAdmin = contact.number === '管理员手机号'; // 替换为你的 WhatsApp 绑定的号码（不带@s.whatsapp.net）
+      const isAdmin = contact.number === '管理员手机号'; // 替换为管理员的 WhatsApp 绑定的号码（不带@s.whatsapp.net）
 
       // 管理员指令处理
       if (isAdmin && text.startsWith('!')) {
@@ -209,12 +215,18 @@ class WhatsAppBot {
 
       // 简单的打招呼逻辑
       if (text.includes('你好') || text.includes('hello') || text.includes('hi') || text.includes('嗨')) {
-        const userName = contact.pushname || contact.number || '朋友';
+        const userName = contact.pushname || contact.name || contact.number || '朋友';
         
         // 加入延迟
         await this.simulateTypingDelay();
 
         const reply = await this.qwenService.generateGreeting(userName);
+        await message.reply(reply);
+      }else{
+        // 加入延迟
+        await this.simulateTypingDelay();
+
+        const reply = await this.qwenService.chat(text,"你是一个友好的WhatsApp社群助手,请使用用户的语言回复他，告诉他如果想聊天的话请在群聊中@机器人");
         await message.reply(reply);
       }
     } catch (error) {
@@ -283,6 +295,76 @@ class WhatsAppBot {
       console.error('处理新人入群失败:', error.message);
     }
   }
+
+  async handleAdminCommands(message, chat, contact) {
+    // 统一转为 trim()，但内容部分保留原始换行和大小写（不使用 toLowerCase()）
+    const text = message.body.trim();
+    const isAdmin = contact.number === '86管理员电话号';
+    //非管理员，退出操作
+    if (!isAdmin){return;}
+
+    // 1. 标记当前群组 (在群组内操作)
+    // 格式：!标记群组 标签名
+    if (text.startsWith('!标记群组 ')) {
+      const tagName = text.replace('!标记群组 ', '').trim();
+      if (!tagName) return await message.reply('❌ 请输入标签名，例如：!标记群组 electronics');
+
+      const success = await this.broadcastService.addGroupToTag(tagName, chat.id._serialized);
+      const resp = success
+          ? `✅ 已将本群 [${chat.name}] 归类为标签：${tagName}`
+          : `⚠️ 本群此前已在标签 [${tagName}] 下，无需重复添加。`;
+      await message.reply(resp);
+      return;
+    }
+
+    // 2. 动态设置标签推送内容 (建议私聊操作)
+    // 格式：!设置内容 标签名 文案内容
+    if (text.startsWith('!设置内容 ')) {
+      const parts = text.split(/\s+/); // 使用正则匹配空格，支持多个空格分隔
+      if (parts.length < 3) {
+        return await message.reply('❌ 格式错误。\n正确格式：!设置内容 [标签名] [文案]\n示例：!设置内容 daily 🌟 今日特价...');
+      }
+
+      const tagName = parts[1];
+      // 重新拼接文案，保留原有的空格和换行
+      const content = text.split(tagName)[1].trim();
+
+      this.broadcastService.updateTagContent(tagName, content);
+      await message.reply(`✅ 标签 [${tagName}] 的文案已更新并持久化：\n\n${content}`);
+      return;
+    }
+
+    // 3. 查看当前所有配置状态
+    if (text === '!状态' || text === '!查看内容') {
+      const tags = this.broadcastService.config.tags;
+      if (Object.keys(tags).length === 0) {
+        return await message.reply('📭 目前没有任何标签配置。');
+      }
+
+      let report = "📊 *当前推送配置概览*：\n";
+      for (const [name, info] of Object.entries(tags)) {
+        report += `\n🏷️ *标签*: ${name}`;
+        report += `\n👥 *群组数*: ${info.groups.length}`;
+        report += `\n📝 *文案预览*: ${info.content ? info.content.substring(0, 20) + '...' : '未设置'}`;
+        report += `\n${'-'.repeat(15)}`;
+      }
+      await message.reply(report);
+      return;
+    }
+
+    // 4. 清空某个标签的内容 (可选)
+    if (text.startsWith('!清空标签 ')) {
+      const tagName = text.replace('!清空标签 ', '').trim();
+      if (this.broadcastService.config.tags[tagName]) {
+        delete this.broadcastService.config.tags[tagName];
+        this.broadcastService.saveConfig();
+        await message.reply(`🗑️ 标签 [${tagName}] 及其关联数据已删除。`);
+      } else {
+        await message.reply(`❌ 未找到标签 [${tagName}]`);
+      }
+    }
+  }
+
 
   async start() {
     console.log('🤖 正在启动 WhatsApp 机器人...');
