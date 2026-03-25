@@ -22,7 +22,7 @@ class WhatsAppBot {
           '--no-first-run',
           '--no-zygote',
           '--disable-gpu',
-          '--proxy-server='
+          `--proxy-server=${process.env.HTTP_PROXY}`
         ]
       },
       // 自定义 WhatsApp 网页地址，备用域名
@@ -111,7 +111,7 @@ class WhatsAppBot {
         setTimeout(async () => {
             console.log('📤 正在发送群聊消息...');
             // 向目标群聊发送消息
-            await this.client.sendMessage('', '我是chatBot，登陆成功');
+            await this.client.sendMessage(process.env.GROUP_ID, '我是chatBot，登陆成功');
         }, 10000);
 
       } catch (err) {
@@ -126,7 +126,7 @@ class WhatsAppBot {
       //监听发送的指令信息
       const contact = await message.getContact();
       const chat = await message.getChat();
-      if (contact.number === '86管理员电话号码' && message.body.startsWith('!')) {
+      if (contact.number === process.env.MANAGER_PHONE && message.body.startsWith('!')) {
         await this.handleAdminCommands(message, chat, contact);
       }
     });
@@ -167,7 +167,7 @@ class WhatsAppBot {
 
     console.log(`收到消息 - 来自：${contact.pushname || contact.number}，聊天：${chat.id.server}`);
     //消息为来自管理员的指令信息
-    if (contact.number === '86管理员电话号' && message.body.startsWith('!')) {
+    if (contact.number === process.env.MANAGER_PHONE && message.body.startsWith('!')) {
       await this.handleAdminCommands(message, chat, contact);
       return;
     }
@@ -186,31 +186,6 @@ class WhatsAppBot {
   async handlePrivateMessage(message, contact) {
     try {
       const text = message.body.trim().toLowerCase();
-      const isAdmin = contact.number === '管理员手机号'; // 替换为管理员的 WhatsApp 绑定的号码（不带@s.whatsapp.net）
-
-      // 管理员指令处理
-      if (isAdmin && text.startsWith('!')) {
-        if (text.startsWith('!设置新品 ')) {
-          const content = text.replace('!设置新品 ', '').trim();
-          this.broadcastService.saveConfig('newProduct', content);
-          await message.reply(`✅ 新品文案已更新并保存：\n\n${content}`);
-          return;
-        }
-
-        if (text.startsWith('!设置活动 ')) {
-          const content = text.replace('!设置活动 ', '').trim();
-          this.broadcastService.saveConfig('weeklyActivity', content);
-          await message.reply(`✅ 活动文案已更新并保存：\n\n${content}`);
-          return;
-        }
-
-        if (text === '!查看当前内容') {
-          const conf = this.broadcastService.config;
-          await message.reply(`当前推送配置：\n\n[新品]: ${conf.newProduct}\n\n[活动]: ${conf.weeklyActivity}`);
-          return;
-        }
-      }
-
 
 
       // 简单的打招呼逻辑
@@ -299,7 +274,7 @@ class WhatsAppBot {
   async handleAdminCommands(message, chat, contact) {
     // 统一转为 trim()，但内容部分保留原始换行和大小写（不使用 toLowerCase()）
     const text = message.body.trim();
-    const isAdmin = contact.number === '86管理员电话号';
+    const isAdmin = contact.number === process.env.MANAGER_PHONE;
     //非管理员，退出操作
     if (!isAdmin){return;}
 
@@ -371,6 +346,7 @@ class WhatsAppBot {
     await this.client.initialize();
     console.log('初始化完成！');
   }
+
 
   async stop() {
     console.log('🛑 正在停止机器人...');
